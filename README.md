@@ -5,7 +5,7 @@ Bienvenue dans **Star Guardian** ! Ce guide vous aidera à installer l'applicati
 ## 📥 Téléchargement
 
 1. Téléchargez le fichier d'installation en cliquant sur le lien ci-dessous :
-   - [Télécharger Star Guardian]()
+   - [Télécharger Star Guardian](dist/Star%20Guardian.exe)
 
 ## 🚀 Installation
 
