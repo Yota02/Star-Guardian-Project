@@ -31,10 +31,14 @@ class ModernButton(ttk.Button):
         self.state(['!active'])
 
 class SatelliteAnalysisGUI:
-    def __init__(self, root):
+    VERSION = None
+    
+    def __init__(self, root, legal_notice=None, version=None):
         self.root = root
-        self.root.title("Star Guardian")
         self.root.geometry("1024x768")
+        self.legal_notice = legal_notice
+        self.VERSION = version
+        self.root.title(f"Star Guardian v{self.VERSION}")  # Titre de la fenêtr
         
         if getattr(sys, 'frozen', False):
             # Si c'est un exécutable PyInstaller, utilisez sys._MEIPASS pour obtenir le chemin d'accès aux fichiers extraits
@@ -162,7 +166,7 @@ class SatelliteAnalysisGUI:
         menu_items = [
             ("Tableau de bord", self.show_dashboard),
             ("Trier les fichiers", self.show_file_sorting),
-            ("Graphiques", self.show_graphics_page),
+            # ("Graphiques", self.show_graphics_page),
             ("Export Excel", self.show_excel_page),
             ("Paramètres", self.show_settings_page),
         ]
@@ -176,10 +180,59 @@ class SatelliteAnalysisGUI:
             )
             btn.pack(pady=5, padx=10)
             
+        about_frame = ttk.Frame(self.sidebar, style='Sidebar.TFrame')
+        about_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
+        
+        ModernButton(
+            about_frame,
+            text="À propos",
+            command=self.show_about,
+            width=20
+        ).pack(side=tk.LEFT)
+
+        # Version label
+        version_frame = ttk.Frame(self.sidebar, style='Sidebar.TFrame')
+        version_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
+        
+        version_label = ttk.Label(
+            version_frame,
+            text=f"v{self.VERSION}",
+            foreground='white',
+            background='#2c3e50',
+            font=('Helvetica', 8)
+        )
+        version_label.pack(side=tk.LEFT)
+            
     def clear_content(self):
         for widget in self.content.winfo_children():
             widget.destroy()
             
+    def show_about(self):
+        """Affiche les mentions légales dans une fenêtre modale"""
+        about_window = tk.Toplevel(self.root)
+        about_window.title("À propos de Star Guardian")
+        about_window.geometry("400x300")
+        about_window.resizable(False, False)
+        about_window.transient(self.root)
+        about_window.grab_set()
+
+        # Centrer la fenêtre
+        about_window.geometry("+%d+%d" % (
+            self.root.winfo_rootx() + self.root.winfo_width()/2 - 200,
+            self.root.winfo_rooty() + self.root.winfo_height()/2 - 150
+        ))
+
+        text = tk.Text(about_window, wrap=tk.WORD, padx=20, pady=20)
+        text.pack(fill=tk.BOTH, expand=True)
+        text.insert("1.0", self.legal_notice)
+        text.config(state=tk.DISABLED)
+
+        ModernButton(
+            about_window,
+            text="Fermer",
+            command=about_window.destroy
+        ).pack(pady=10)        
+    
     def show_dashboard(self):
         self.clear_content()
         
@@ -529,7 +582,6 @@ class SatelliteAnalysisGUI:
                 if format_final == "calc":
                     final_output = os.path.join(output_dir, f"{nom_fichier}_Analyse.ods")
                 
-                
                 # Convertir le fichier Excel en format final
                 conversion_success = self.execl.convert_to_format(temp_excel_output, final_output, format_final)
                 if conversion_success:
@@ -673,8 +725,35 @@ class SatelliteAnalysisGUI:
         # Options de format
         format_options = [
             ("Microsoft Excel (*.xlsx)", "excel"),
-            ("LibreOffice Calc (*.ods)", "calc"),
+            # ("LibreOffice Calc (*.ods)", "calc"),
         ]
+        
+        config_files_frame = ttk.LabelFrame(settings_frame, text="Fichiers de configuration", style='Settings.TLabelframe')
+        config_files_frame.pack(fill=tk.X, expand=False, padx=20, pady=10)
+        
+        # Configuration des pays
+        country_config_frame = ttk.Frame(config_files_frame)
+        country_config_frame.pack(fill=tk.X, expand=True, padx=10, pady=5)
+        ttk.Label(country_config_frame, text="Fichier de configuration des pays:").pack(side=tk.LEFT, padx=5)
+        
+        def show_country_config():
+            try:
+                # Chemin vers le fichier de configuration des pays
+                config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config', 'Country_2025-01-24.xlsx'))
+                
+                if os.path.exists(config_path):
+                    # Ouvre l'explorateur Windows en sélectionnant le fichier
+                    os.system(f'explorer /select,"{config_path}"')
+                else:
+                    messagebox.showwarning("Attention", "Le fichier de configuration des pays (Country_2025-01-24.xlsx) n'existe pas.")
+            except Exception as e:
+                messagebox.showerror("Erreur", f"Impossible d'accéder au fichier: {str(e)}")
+        
+        ModernButton(
+            country_config_frame,
+            text="Localiser le fichier",
+            command=show_country_config
+        ).pack(side=tk.LEFT, padx=5)
         
         format_subframe = ttk.Frame(model_format_frame)
         format_subframe.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
@@ -931,4 +1010,3 @@ class SatelliteAnalysisGUI:
         self.show_settings_page()
         
         messagebox.showinfo("Paramètres réinitialisés", "Les paramètres ont été réinitialisés aux valeurs par défaut")
-

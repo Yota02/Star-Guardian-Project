@@ -3,8 +3,9 @@ import re
 import shutil
 from openpyxl import load_workbook
 
+
 from backend.script_execl import Execl_Brut
-from backend.script_extraction import Conjonction, Country, Dates_, Distance_Miss, Inclination, Maneuvrable, Object_type, Probabilite
+from backend.script_extraction import AgeAnalyzer, Conjonction, Country, Dates_, Distance_Miss, Inclination, Maneuvrable, Object_type, Probabilite
 
 import pandas as pd
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -41,6 +42,7 @@ class SatelliteDataProcessor:
         self.object_type_analyzer = None
         self.probability_analyzer = None
         self.miss_distance_analyzer = None
+        self.satelliteAgeAnalyzer = None
         
         if dossier and chemin_sortie:
             self.initialize_analyzers()
@@ -106,6 +108,7 @@ class SatelliteDataProcessor:
         self.conjunction_analyzer = None
         self.country_analyzer = None
         self.date_analyzer = None
+        self.satelliteAgeAnalyzer = None
         self.inclination_analyzer = None
         self.maneuvrable_analyzer = None
         self.object_type_analyzer = None
@@ -139,6 +142,7 @@ class SatelliteDataProcessor:
         self.conjunction_analyzer = Conjonction.ConjunctionAnalyzer(self.dossier, self.chemin_sortie, self.ws, self.wb)
         self.country_analyzer = Country.CountryAnalyzer(self.dossier, self.chemin_sortie, self.ws, self.wb)
         self.date_analyzer = Dates_.DateAnalyzer(self.dossier, self.chemin_sortie, self.ws, self.wb)
+        self.satelliteAgeAnalyzer = AgeAnalyzer.SatelliteAgeAnalyzer(self.dossier, self.chemin_sortie, self.ws, self.wb)
         self.inclination_analyzer = Inclination.InclinationAnalyzer(self.dossier, self.chemin_sortie, self.ws, self.wb)
         self.maneuvrable_analyzer = Maneuvrable.ManeuvrableAnalyzer(self.dossier, self.chemin_sortie, self.ws, self.wb)
         self.object_type_analyzer = Object_type.ObjectTypeAnalyzer(self.dossier, self.chemin_sortie, self.ws, self.wb)
@@ -403,6 +407,59 @@ class SatelliteDataProcessor:
         # Sauvegarder le fichier
         self.wb.save(self.chemin_sortie)
         
+    def convert_to_format(self, source_path, target_path, format_type):
+        """
+        Convertit un fichier Excel vers le format ODS pour LibreOffice Calc.
+        
+        Args:
+            source_path (str): Chemin du fichier Excel source
+            target_path (str): Chemin du fichier ODS de destination
+            format_type (str): Format cible ('calc' pour ODS)
+            
+        Returns:
+            bool: True si la conversion a réussi, False sinon
+        """
+        try:
+            if format_type == "calc":
+                # Vérifier que l'extension du fichier cible est .ods
+                if not target_path.endswith('.ods'):
+                    target_path = target_path.rsplit('.', 1)[0] + '.ods'
+                
+                import pandas as pd
+                
+                # Lire toutes les feuilles Excel
+                excel_file = pd.ExcelFile(source_path)
+                sheet_names = excel_file.sheet_names
+                
+                # Créer un writer pour le format ODS
+                with pd.ExcelWriter(target_path, engine='odf') as writer:
+                    # Copier chaque feuille
+                    for sheet_name in sheet_names:
+                        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                # Vérifier que le fichier a bien été créé
+                if os.path.exists(target_path):
+                    print(f"Conversion réussie vers {target_path}")
+                    return True
+                else:
+                    print(f"Échec: Fichier {target_path} non créé")
+                    return False
+                    
+            else:
+                print(f"Format de conversion '{format_type}' non supporté.")
+                return False
+                
+        except ImportError:
+            print("Erreur: Pandas avec support ODF non disponible.")
+            print("Installez les bibliothèques nécessaires avec: pip install pandas odfpy")
+            return False
+        except Exception as e:
+            print(f"Erreur lors de la conversion: {e}")
+            import traceback
+            traceback.print_exc()
+            return False    
+        
     def executer_analyse(self, racine_projet=None):
         """
         Exécute l'analyse complète en utilisant le chemin de sortie déjà configuré.
@@ -423,14 +480,26 @@ class SatelliteDataProcessor:
             # Obtenir le nom du satellite
             nom_satellite = self.nom_satellite()
             
-            # Copier le fichier modèle vers le chemin de sortie configuré
+            # Si le format est "calc", ajuster l'extension du chemin de sortie
+            original_chemin_sortie = self.chemin_sortie
+            if self.format_type == "calc" and not self.chemin_sortie.endswith('.ods'):
+                self.chemin_sortie = self.chemin_sortie.rsplit('.', 1)[0] + '.ods'
+                
+            # On doit toujours travailler avec Excel temporairement pour la génération
+            temp_excel_path = original_chemin_sortie
+            if self.format_type == "calc":
+                temp_excel_path = original_chemin_sortie.rsplit('.', 1)[0] + '.xlsx'
+            
+            # Copier le fichier modèle vers le chemin temporaire Excel
             try:
-                shutil.copy2(self.chemin_modele, self.chemin_sortie)
+                shutil.copy2(self.chemin_modele, temp_excel_path)
             except Exception as e:
                 print(f"Erreur lors de la copie du modèle: {e}")
                 return False
             
-            # Charger le nouveau fichier
+            # Charger le nouveau fichier Excel pour le traitement
+            temp_chemin_sortie = self.chemin_sortie
+            self.chemin_sortie = temp_excel_path
             self.set_wb()
             
             # S'assurer que les analyseurs sont correctement initialisés
@@ -441,6 +510,7 @@ class SatelliteDataProcessor:
                 print("L'analyseur de conjonction n'est pas initialisé après réinitialisation.")
                 return False
             
+            # Générer toutes les données dans le fichier Excel temporaire
             self.generer_execl_avec_toute_les_donnees()
             
             # Vérifier que le classeur est chargé
@@ -448,49 +518,70 @@ class SatelliteDataProcessor:
                 print("Classeur non chargé.")
                 return False
             
-            # Ajouter les informations à la feuille de statistiques
-            self.ws['A1'] = nom_satellite
-            self.ws['D3'] = self.compter_fichiers()
-            
             # Traitement des conjonctions
             self.conjunction_analyzer.process_data()
             self.conjunction_analyzer.generer_excel_avec_donnees()
-            
-            # Nombre de conjonctions
-            nb_conjunctions = self.conjunction_analyzer.get_conjunction_count()
-            self.ws['D4'] = nb_conjunctions
             
             # Traitement des dates
             all_dates = self.date_analyzer._collect_dates()
             min_date = self.date_analyzer.find_min_date(all_dates)
             max_date = self.date_analyzer.find_max_date(all_dates)
             
+            if 'STATISTIQUES' not in self.wb.sheetnames:
+                self.ws = self.wb.create_sheet('STATISTIQUES')
+            else:
+                self.ws = self.wb['STATISTIQUES']
+
+            # Ajouter les informations à la feuille de statistiques avec vérification
+            try:
+                # Écriture dans A1
+                self.ws['A1'] = nom_satellite if nom_satellite else "Non trouvé"
+                
+                # Écriture dans D3
+                fichiers_count = self.compter_fichiers()
+                self.ws['D3'] = fichiers_count if fichiers_count is not None else 0
+                
+                # Écriture dans D4
+                nb_conjunctions = self.conjunction_analyzer.get_conjunction_count()
+                self.ws['D4'] = nb_conjunctions if nb_conjunctions is not None else 0
+                
+                
+                
+                # Écriture dans D6 et D7
+                self.ws['D6'] = min_date.strftime('%Y-%m-%d') if min_date else 'Aucune date trouvée'
+                self.ws['D7'] = max_date.strftime('%Y-%m-%d') if max_date else 'Aucune date trouvée'
+                
+                # Sauvegarder immédiatement les modifications
+                self.wb.save(temp_excel_path)
+                
+            except Exception as e:
+                print(f"Erreur lors de l'écriture dans les cellules : {e}")
+                
             self.country_analyzer.process_data()
-                        
-            # Ajouter les dates min et max
-            self.ws['D6'] = min_date.strftime('%Y-%m-%d') if min_date else 'Aucune date trouvée'
-            self.ws['D7'] = max_date.strftime('%Y-%m-%d') if max_date else 'Aucune date trouvée'
-            
             self.inclination_analyzer.process_data()
             
-            # Générer tous les données brutes
-            Execl_Brut.generer_execl_avec_toute_les_donnees(self.dossier, self.chemin_sortie)
+            self.satelliteAgeAnalyzer.process_data()
             
-            # Sauvegarder le fichier Excel
-            self.wb.save(self.chemin_sortie)
+            # Générer tous les données brutes
+            Execl_Brut.generer_execl_avec_toute_les_donnees(self.dossier, temp_excel_path)
+            
+            # Sauvegarder le fichier Excel temporaire
+            self.wb.save(temp_excel_path)
             
             # Si un format autre que Excel est demandé, convertir le fichier
             if self.format_type != "excel":
-                target_path = self.getSortie()  # Obtient le chemin avec l'extension correcte
+                # Restaurer le chemin de sortie original (potentiellement avec extension .ods)
+                self.chemin_sortie = temp_chemin_sortie
                 
-                if self.convert_to_format(self.chemin_sortie, target_path, self.format_type):
-                    print(f"Conversion réussie vers le format {self.format_type}: {target_path}")
-                    # Si conversion réussie, supprimer le fichier Excel d'origine
-                    if os.path.exists(target_path) and os.path.exists(self.chemin_sortie):
-                        os.remove(self.chemin_sortie)
-                        self.chemin_sortie = target_path
+                if self.convert_to_format(temp_excel_path, self.chemin_sortie, self.format_type):
+                    print(f"Conversion réussie vers le format {self.format_type}: {self.chemin_sortie}")
+                    # Si conversion réussie, supprimer le fichier Excel temporaire
+                    if os.path.exists(self.chemin_sortie) and os.path.exists(temp_excel_path):
+                        os.remove(temp_excel_path)
                 else:
                     print(f"Échec de la conversion vers {self.format_type}. Le fichier Excel est conservé.")
+                    # En cas d'échec, restaurer le chemin vers le fichier Excel
+                    self.chemin_sortie = temp_excel_path
             
             print(f"Analyse terminée. Fichier sauvegardé : {self.chemin_sortie}")
             return True

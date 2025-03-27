@@ -63,5 +63,3 @@ def generer_execl_avec_toute_les_donnees(directory_path, output_file):
         
     # Sauvegarder le fichier
     wb.save(output_file)
-    
-

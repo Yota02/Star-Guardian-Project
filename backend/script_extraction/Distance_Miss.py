@@ -80,5 +80,3 @@ class MissDistanceAnalyzer(BaseAnalyzer):
         """
         raw_distances = self.analyze_files(extraction_func=self.extract_miss_distance)
         return self.get_statistics(raw_distances)
-    
-    
